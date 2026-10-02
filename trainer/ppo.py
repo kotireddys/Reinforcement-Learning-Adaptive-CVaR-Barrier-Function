@@ -170,8 +170,11 @@ class PPO:
 
             # Calculate advantage using GAE
             A_k = self.calculate_gae(batch_rews, batch_vals, batch_dones).to(self.device)
-            V = self.critic(batch_obs).squeeze()
-            batch_rtgs = A_k + V.detach()   
+            # V is only used as a constant target here, so skip the autograd graph and
+            # chunk the batch (a GNN critic's per-edge activations scale with batch size).
+            with torch.no_grad():
+                V = torch.cat([self.critic(chunk) for chunk in batch_obs.split(1024)]).squeeze()
+            batch_rtgs = A_k + V
             
             # Increment the number of iterations
             i_so_far += 1
