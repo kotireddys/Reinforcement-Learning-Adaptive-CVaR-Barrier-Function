@@ -140,6 +140,14 @@ class DiffCVaRBFQP(nn.Module):
         variances = variances_flat.reshape(bsz, k, m)
         return means, variances
 
+    def encode(self, obs):
+        """Observation -> hidden features feeding the u_nom / beta / r_safe heads."""
+        return self.act(self.fc1(obs))
+
+    def qp_obs(self, obs):
+        """Observation slice whose obstacle blocks become CVaR-BF constraints."""
+        return obs
+
     def forward(self, obs):
         if isinstance(obs, np.ndarray):
             obs = torch.tensor(obs, dtype=torch.float)
@@ -148,7 +156,7 @@ class DiffCVaRBFQP(nn.Module):
             obs = obs.unsqueeze(0)
         obs = obs.reshape(obs.size(0), -1)
 
-        x = self.act(self.fc1(obs))
+        x = self.encode(obs)
         x21 = self.act(self.fc21(x))
         x22 = self.act(self.fc22(x))
         x23 = self.act(self.fc23(x))
@@ -162,6 +170,7 @@ class DiffCVaRBFQP(nn.Module):
         r_safe_learned = self.safe_dist * r_scale
         self.last_r_safe = r_safe_learned
 
+        obs = self.qp_obs(obs)
         if self.robot_type == 'single_integrator':
             u_safe = self._solve_single_integrator_qp(obs, u_nom, beta, r_safe_learned)
         elif self.robot_type == 'unicycle':

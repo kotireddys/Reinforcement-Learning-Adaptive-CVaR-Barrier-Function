@@ -105,16 +105,21 @@ def select_top_k_obs(rel_obs, top_k: int):
     The env emits all humans (sorted nearest-first) so a simple prefix slice
     is the correct top-K selection. Works on 1D or 2D arrays.
 
+    If the env emits fewer than ``top_k`` human slots (e.g. evaluating a model
+    trained on 20 humans in a 10-human scene), the missing slots are
+    zero-padded, i.e. mask=0, matching the env's own dummy-slot convention.
+
     Input shape:  (..., 6 + N_all * 6)
     Output shape: (..., 6 + top_k * 6)
     """
     k = int(top_k)
     arr = np.asarray(rel_obs)
     width = 6 + k * 6
+    if arr.shape[-1] < 6 or (arr.shape[-1] - 6) % 6 != 0:
+        raise ValueError(f"obs has {arr.shape[-1]} cols, expected 6 + N*6")
     if arr.shape[-1] < width:
-        raise ValueError(
-            f"obs has {arr.shape[-1]} cols, need >= {width} for top_k={k}"
-        )
+        pad = np.zeros(arr.shape[:-1] + (width - arr.shape[-1],), dtype=arr.dtype)
+        return np.concatenate([arr, pad], axis=-1)
     if arr.shape[-1] == width:
         return arr
     return arr[..., :width]
