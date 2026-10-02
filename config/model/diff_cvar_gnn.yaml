@@ -1,0 +1,40 @@
+# @package _global_
+# DiffCVaR-BF-QP whose policy/value inputs come from a graph attention network
+# over the complete ego/goal/humans graph (model/gat.py). Everything except the
+# representation matches config/model/diff_cvar.yaml.
+
+env:
+  # The pipeline passes every human slot to the model; the GAT consumes all of
+  # them and the QP still takes only the nearest model.actor.qp_top_k.
+  obs_top_k: ${math:${env.humans.num_humans}+${env.humans.human_num_range}}
+
+model:
+  type: diff_cvar_gnn
+  obs_dim: ${math:6+${env.obs_top_k}*6}
+  act_dim: ${env.act_dim}
+
+  gnn:
+    embed_dim: 64
+    hidden_dim: 64
+    num_layers: 2
+
+  actor:
+    hidden_dim: 256
+    control_hidden_dim: 256
+    scalar_hidden_dim: 256
+    act: relu
+    action_std_init: 0.5
+    safety_margin: 0.05
+    alpha: 2.0
+    beta_min: 0.05
+    beta: 0.5
+    qp_max_iter: 40
+    qp_top_k: 1
+    gmm_weights: [0.6, 0.2, 0.2]
+    gmm_stds: [0.1, 0.2, 0.2]
+    gmm_lateral_ratio: 0.3
+
+  critic:
+    hidden_dim: 256
+    hidden_dim2: 256
+    act: relu

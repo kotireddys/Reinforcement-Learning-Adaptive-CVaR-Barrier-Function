@@ -18,10 +18,11 @@ class ActorCritic(nn.Module):
         action_low,
         action_high,
         action_std_init=0.5,
+        critic_class=FCNet,
     ):
         super().__init__()
         self.actor = policy_class(obs_dim, act_dim, **actor_kwargs)
-        self.critic = FCNet(obs_dim, 1, **critic_kwargs)
+        self.critic = critic_class(obs_dim, 1, **critic_kwargs)
         self.log_std = nn.Parameter(torch.log(torch.full((int(act_dim),), float(action_std_init))))
 
         action_low = torch.as_tensor(action_low, dtype=torch.float32)

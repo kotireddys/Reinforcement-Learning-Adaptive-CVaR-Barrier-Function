@@ -10,6 +10,9 @@ def get_model_class(method: str):
     if method == "diff_cvar":
         from model.diff_cvar import DiffCVaRBFQP
         return DiffCVaRBFQP
+    if method == "diff_cvar_gnn":
+        from model.diff_cvar_gnn import DiffCVaRBFQPGNN
+        return DiffCVaRBFQPGNN
     raise ValueError(f"Unknown method {method}")
 
 
@@ -37,7 +40,7 @@ def _actor_kwargs(cfg):
                 "act": actor_cfg.get("act", "relu"),
             }
         )
-    elif method == "diff_cvar":
+    elif method in ("diff_cvar", "diff_cvar_gnn"):
         kwargs.update(
             {
                 "hidden_dim": int(actor_cfg.get("hidden_dim", 256)),
@@ -48,6 +51,9 @@ def _actor_kwargs(cfg):
                 "qp_max_iter": int(actor_cfg.get("qp_max_iter", 40)),
             }
         )
+    if method == "diff_cvar_gnn":
+        kwargs.update(_gnn_kwargs(cfg))
+        kwargs["qp_top_k"] = int(actor_cfg.get("qp_top_k", 1))
 
     kwargs.update(get_policy_kwargs(cfg, method))
     for cfg_key, kwarg_key in (
@@ -61,13 +67,34 @@ def _actor_kwargs(cfg):
     return kwargs
 
 
+def _gnn_kwargs(cfg):
+    gnn_cfg = cfg.model.get("gnn", {}) or {}
+    return {
+        "gnn_embed_dim": int(gnn_cfg.get("embed_dim", 64)),
+        "gnn_hidden_dim": int(gnn_cfg.get("hidden_dim", 64)),
+        "gnn_layers": int(gnn_cfg.get("num_layers", 2)),
+    }
+
+
+def get_critic_class(method: str):
+    method = (method or "").strip().lower()
+    if method == "diff_cvar_gnn":
+        from model.diff_cvar_gnn import GraphCritic
+        return GraphCritic
+    from model.ppo_base import FCNet
+    return FCNet
+
+
 def _critic_kwargs(cfg):
     critic_cfg = cfg.model.get("critic", {}) or {}
-    return {
+    kwargs = {
         "hidden_dim": int(critic_cfg.get("hidden_dim", 256)),
         "hidden_dim2": int(critic_cfg.get("hidden_dim2", 256)),
         "act": critic_cfg.get("act", "relu"),
     }
+    if str(cfg.model.type) == "diff_cvar_gnn":
+        kwargs.update(_gnn_kwargs(cfg))
+    return kwargs
 
 
 def _action_std_init(cfg):
@@ -85,6 +112,7 @@ def build_model(config, obs_dim, act_dim, action_low=None, action_high=None):
     policy_class = get_model_class(method)
     return ActorCritic(
         policy_class=policy_class,
+        critic_class=get_critic_class(method),
         obs_dim=int(obs_dim),
         act_dim=int(act_dim),
         actor_kwargs=_actor_kwargs(config),

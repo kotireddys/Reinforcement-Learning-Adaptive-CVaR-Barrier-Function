@@ -32,7 +32,7 @@ def resolve_device(requested, default="cuda"):
 
 def get_policy_kwargs(config, method):
     method = str(method or "").strip().lower()
-    if method != "diff_cvar":
+    if method not in ("diff_cvar", "diff_cvar_gnn"):
         return {}
 
     actor_cfg = config.model.get("actor", {}) or {}
