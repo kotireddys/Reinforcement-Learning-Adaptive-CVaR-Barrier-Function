@@ -27,6 +27,15 @@ from trainer.utils import resolve_device
 FIXED_EVAL_SEEDS = list(range(100, 1000 + 1, 100))
 
 
+def parse_seeds(text):
+    """'100,200,300' or 'start:stop:step' (stop exclusive) -> list of ints."""
+    text = str(text).strip()
+    if ":" in text:
+        start, stop, step = (int(part) for part in text.split(":"))
+        return list(range(start, stop, step))
+    return [int(part) for part in text.split(",") if part.strip()]
+
+
 OmegaConf.register_new_resolver("math", lambda expr: eval(str(expr)), replace=True)
 
 
@@ -80,12 +89,14 @@ def override_suffix(overrides):
 
 
 class Evaluator:
-    def __init__(self, save_dir, episodes_per_seed=None, visualize=False, overrides=None):
+    def __init__(self, save_dir, episodes_per_seed=None, visualize=False, overrides=None, seeds=None,
+                 output_tag=""):
         self.save_dir = Path(save_dir)
+        self.seeds = list(seeds) if seeds else FIXED_EVAL_SEEDS
         self.visualize = bool(visualize)
         self.video_save_dir = None
         self.overrides = list(overrides or [])
-        self.output_suffix = override_suffix(self.overrides)
+        self.output_suffix = override_suffix(self.overrides) + (f"_{output_tag}" if output_tag else "")
         self.config = OmegaConf.load(self.save_dir / "config.yaml")
         if self.overrides:
             validate_existing_leaf_overrides(self.config, self.overrides, context="eval")
@@ -180,7 +191,7 @@ class Evaluator:
         total_episodes = 0
 
         try:
-            for seed in tqdm(FIXED_EVAL_SEEDS, desc="Evaluating"):
+            for seed in tqdm(self.seeds, desc="Evaluating"):
                 for ep in range(self.episodes_per_seed):
                     episode_seed = seed + ep
                     obs, _info = env.reset(seed=episode_seed)
@@ -226,7 +237,7 @@ class Evaluator:
         return {
             "checkpoint": str(ckpt_path),
             "step": self._checkpoint_step(ckpt_path),
-            "eval_seeds": FIXED_EVAL_SEEDS,
+            "eval_seeds": self.seeds,
             "episodes_per_seed": self.episodes_per_seed,
             "total_episodes": total_episodes,
             "mean_return": float(np.mean(returns)) if returns else 0.0,
@@ -278,6 +289,8 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", default="", help="Evaluate one checkpoint instead of all ckpt_*.pt files")
     parser.add_argument("--episodes-per-seed", type=int, default=None, help="Episodes evaluated for each fixed seed")
     parser.add_argument("--visualize", action="store_true", help="Save GIF rollout videos")
+    parser.add_argument("--seeds", default="", help="Episode seeds, '1,2,3' or 'start:stop:step' (default: 100..1000)")
+    parser.add_argument("--tag", default="", help="Suffix for the results file / visualize dir")
     parser.add_argument("overrides", nargs="*", help="Eval-only OmegaConf overrides, e.g. env.humans.use_gmm=false")
     args = parser.parse_args()
 
@@ -287,6 +300,8 @@ if __name__ == "__main__":
             episodes_per_seed=args.episodes_per_seed,
             visualize=args.visualize,
             overrides=args.overrides,
+            seeds=parse_seeds(args.seeds) if args.seeds else None,
+            output_tag=args.tag,
         ).eval_all_ckpts(checkpoint=args.checkpoint or None)
     except ValueError as exc:
         parser.exit(2, f"{exc}\n")
